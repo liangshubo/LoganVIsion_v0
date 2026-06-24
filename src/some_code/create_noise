@@ -1,0 +1,9 @@
+import cv2
+
+import numpy as np
+
+def create_gauss(h,w,mean,std):
+    noise = np.random.normal(mean,std,(h,w))
+    cv2.imwrite("/ultrasound/LiangShubo/DenoiseCode/Self-developed-SRI/src/demoimage/noise_gauss/noise.png",noise)
+    
+create_gauss(605,660,20,6.39)

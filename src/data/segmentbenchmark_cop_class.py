@@ -1,0 +1,282 @@
+
+import cv2
+import numpy as np
+
+import torch
+
+# from .base_dataset import BaseDataset
+from .segmentbenchmark import SegmentBenchmark
+import os 
+import random
+
+#  250815 脊骨切面识别与分割   这里是同属带有切面的类别信息，类别信息是构建一个同尺寸的mask,,以及切面对应的组织分割编号
+
+class SegmentBenchmark_Cop_Class(SegmentBenchmark):
+    def __init__(self,args,test_dataset_name=None):
+        super(SegmentBenchmark_Cop_Class,self).__init__(args,test_dataset_name)
+        # self.dataset_image_pathfile = os.path.join(args.dataset_path,'benchmark',test_dataset_name,test_dataset_name+".txt")
+        # self.get_path_from_txt()
+        # self.resize_traindata = args.resize_traindata
+        #
+        # self.num_class = args.num_class
+        # self.test_dataset_name = test_dataset_name
+        self.section_to_tissue = [  [0,0,0], [0,1, 2, 3],     # 切面1的组织索引
+                                    [0,3, 4, 5],     # 切面2的组织索引
+                                    [0,3, 6, 7],     # 切面3的组织索引
+                                    [0,3, 8, 9],     # 切面4的组织索引
+                                    [0,3, 10,11,12], # 切面5的组织索引
+                                    [0,3, 13, 14],   # 切面6的组织索引
+                                    [0,15, 16],      # 切面7的组织索引
+                                    [0,3, 16, 17],   # 切面8的组织索引
+                                    [0,18, 19, 20],  # 切面10的组织索引
+                                    [0,21, 22, 23],  # 切面11的组织索引
+                                 ]
+
+    # CH
+    def get_path_from_txt(self):
+        """
+        the image and gt filepoath will read from self.dataset_image_pathfile
+        and save in self.image_path_list\self.gt_path_list
+        """
+        self.label_list = []
+        with open(self.dataset_image_pathfile, 'r') as f:
+            lines = f.readlines()
+            for i in range(0, len(lines), 2):
+                self.image_path_list.append(lines[i].split(" ")[0].rstrip())
+                self.label_list.append(lines[i].split(" ")[1].rstrip())
+                self.gt_path_list.append(lines[i + 1].rstrip())
+
+    # chANGE
+    def __getitem__(self, idx):
+        idx = idx % len(self.image_path_list)
+        image = self.image_path_list[idx]
+        gt = self.gt_path_list[idx]
+        label = self.label_list[idx]
+        tensor_image,tensor_gt,tensor_label,plane_channel_idx_tensor,nameext  = self.load_file(image,gt,label)
+        return tensor_image, tensor_gt,tensor_label,plane_channel_idx_tensor,nameext
+
+    # CHANGE
+    def read_file(self, image, gt, label):
+        '''
+        this define the image is one channel , if you want set rgb channel the imread(path) neednot (path,0)
+        '''
+        image_array = cv2.imread(image, 0)
+
+        if os.path.isfile(gt) and int(label) != 0:
+            gt_array = np.load(gt)
+        else:
+            gt_array = np.zeros_like(image_array)
+
+        label_array = np.ones_like(image_array) * int(label)
+
+        plane_channel_idx = self.section_to_tissue[int(label)]
+        plane_channel_idx_tensor = self.create_onehot_from_indices(plane_channel_idx,self.num_class)
+
+        return image_array, gt_array, label_array,plane_channel_idx_tensor
+    # LOAD
+
+
+    @staticmethod
+    def create_onehot_from_indices(indices_list, dim=24):
+        """
+        将组织索引列表转换为固定维度的one-hot编码
+        参数:
+        indices_list -- 包含组织索引的列表，例如 [3, 6, 7]
+        dim -- one-hot编码的维度，默认为24
+        返回:
+        一个dim维的numpy数组，其中指定索引位置为1，其余为0
+        """
+        # 初始化全0向量
+        onehot = torch.zeros(dim, dtype=float)
+
+        # 将指定索引位置设为1
+        for idx in indices_list:
+            if 1 <= idx <= dim:
+                onehot[idx] = 1  # 索引从1开始，但数组从0开始
+
+        return onehot
+
+    def load_file(self,image,gt,label):
+        path, nameext = os.path.split(image)
+        image,gt, label ,plane_channel_idx_tensor = self.read_file(image,gt, label)
+        #返回一个numpy数组，0-255 uint8 类型
+        if self.crop_traindata:
+            image,gt = self.crop_image(image),self.crop_image(gt)
+
+        if self.resize_traindata is not None:
+            image = self.resize_image(image)
+            gt = self.resize_image(gt, "near")
+            label = self.resize_image(label, "near")
+
+        gt = np.ascontiguousarray(gt)
+        label = np.ascontiguousarray(label)
+        image_tensor = self.np2tensor(image)
+        gt_tensor = torch.from_numpy(gt).long()
+        #gt_tensor = self.single_channel_to_onehot(gt)
+        label_tensor = torch.from_numpy(label).float().unsqueeze(0)
+
+        #plane_channel_idx_tensor = plane_channel_idx_tensor.unsqueeze(0)
+        #b, c = plane_channel_idx_tensor.shape
+        #plane_channel_idx_tensor = plane_channel_idx_tensor.view(b, c, 1, 1)
+        #print(plane_channel_idx_tensor.shape)
+        return image_tensor, gt_tensor ,label_tensor,plane_channel_idx_tensor,nameext
+
+
+
+
+    # def resize_image(self, image, mode=None):
+    #     def _resize(s):
+    #         if mode == "near":
+    #             return cv2.resize(s, (self.resize_traindata, self.resize_traindata), interpolation=cv2.INTER_NEAREST)
+    #         return cv2.resize(s, (self.resize_traindata, self.resize_traindata))
+    #
+    #     ret = _resize(image)
+    #     return ret
+    #
+    # def augment_patch(self, image,gt, hflip=True, rot=True):
+    #
+    #     # if the patch_size = None the augment will be error because the image has filp and image 2 no flip the batch will be wrong
+    #     hflip = hflip and random.random() < 0.5
+    #     vflip = rot and random.random() < 0.5
+    #     rot90 = rot and random.random() < 0.5
+    #     if self.light_change == 1 and random.random() < 0.5:
+    #         light_gain = [-55, -45, -20, -10, 10, 20, 45, 55]
+    #         light = random.choice(light_gain)
+    #     else:
+    #         light = 0
+    #
+    #     def _augment(img):
+    #         if hflip: img = img[:, ::-1]
+    #         if vflip: img = img[::-1, :]
+    #         if rot90: img = img.transpose(1, 0)
+    #         if light != 0:
+    #             imgf = img.astype(float)  # numpy  20   np.float -> float
+    #             imgf_gain = imgf + light
+    #
+    #             imgf_gain_high = (imgf_gain > 254)
+    #
+    #             imgf_gain[imgf_gain_high] = 255
+    #             img = imgf_gain.astype(int)  # numpy  20   np.int -> int
+    #         return img
+    #
+    #     return _augment(image)
+    #
+    # def single_channel_to_onehot(self,label):
+    #     """
+    #        将单通道类别标签转换为多通道one-hot编码
+    #        参数:
+    #            label_img: 单通道标签图像，像素值1-10代表不同类别
+    #            num_classes: 类别总数（默认10）
+    #        返回:
+    #            onehot: one-hot编码的多通道矩阵(num_classes,H,W)，dtype=uint8
+    #        """
+    #     # 验证输入图像是否为单通道
+    #     if len(label.shape) != 2:
+    #         raise ValueError("输入图像必须是单通道")
+    #     # 获取图像尺寸
+    #     h, w = label.shape
+    #     # 初始化one-hot矩阵（全0）
+    #     onehot = np.zeros(( self.num_class,h, w,), dtype=np.uint8)
+    #     # 为每个类别创建通道
+    #     for class_id in range(1, self.num_class + 1):  # 类别从1开始
+    #         # 创建当前类别的掩码
+    #         mask = (label== class_id)
+    #         # 在对应通道上标记
+    #         onehot[class_id - 1,:, :] = mask.astype(np.uint8)  # 通道索引从0开始
+    #     onehot = np.ascontiguousarray(onehot)
+    #     onehot_tensor = torch.from_numpy(onehot).float()
+    #     return onehot_tensor
+    #
+    # def crop_image(self,img):
+    #     h,w = img.shape
+    #     (h1,h2,w1,w2) = (174,766,449,1169)
+    #     if h2>h :
+    #         h2 = h
+    #     if w2>w:
+    #         w2 = w
+    #     img = img[h1:h2,w1:w2]
+    #     return img
+    #
+    # def __len__(self):
+    #     return len(self.image_path_list)
+    #
+
+
+if __name__ == '__main__':
+    from src.option import args
+
+    args.dataset_path = "/home/ubuntu4090/4T_disk/liangshubo/MSKAI/PreExp/dataset"
+    dataset = SegmentBenchmark_Cop_Class(args, test_dataset_name="n6000_shoulder_segment_828_cop_class")
+    print(dataset.image_path_list)
+    print(sorted(dataset.image_path_list))
+    image, label,nameext = dataset.__getitem__(104)
+    print(" Dataset Raw Image shape : [", image.shape , "] Max : " ,image.max())
+    print(" Dataset Raw Label(onehot) shape :  [",label.shape, "] Max :", label.max())
+
+    def one_hot_to_single(label):
+        [c,h,w] = label.shape
+        single_label = torch.zeros([h,w])
+
+
+        for i in range(1,c+1):
+            single_label += label[i-1,:,:]*i
+
+        return single_label
+
+
+    labels = one_hot_to_single(label)
+    print(" SingleLabel shape : [",labels.shape , " Max : ", labels.max())
+
+    def visualize_segmentation(original_img, label_img, alpha=0.5):
+        """
+        将语义分割结果与原始图像叠加显示
+
+        参数:
+            original_img: 原始图像（可以是灰度或彩色）
+            label_img: 标签图像（单通道，像素值1-10代表不同类别）
+            alpha: 标签透明度（0-1）
+
+        返回:
+            合成后的图像
+        """
+        # 确保原始图像是3通道
+        if len(original_img.shape) == 2 :
+            original_img = cv2.cvtColor(original_img, cv2.COLOR_GRAY2BGR)
+
+        # 定义类别颜色映射（BGR格式）
+        color_map = {
+            1: [0, 0, 255],  # 红色
+            2: [0, 255, 0],  # 绿色
+            3: [255, 0, 0],  # 蓝色
+            4: [0, 255, 255],  # 黄色
+            5: [255, 255, 0],  # 青色
+            6: [255, 0, 255],  # 品红
+            7: [0, 0, 125],  # 深红
+            8: [128, 128, 128],  # 灰色（示例，未指定）
+            9: [255, 165, 0],  # 橙色（示例，未指定）
+            10: [75, 0, 130]  # 靛蓝（示例，未指定）
+        }
+
+        # 创建彩色标签图像
+        h, w = label_img.shape
+        colored_label = np.zeros((h, w, 3), dtype=np.uint8)
+
+        # 根据类别填充颜色
+        for class_id, color in color_map.items():
+            mask = (label_img == class_id)
+            colored_label[mask] = color
+
+        # 叠加图像（带透明度）
+        overlay = cv2.addWeighted(original_img, 1 - alpha, colored_label, alpha, 0)
+
+        return overlay
+
+    image_array = np.array(image.squeeze(0)*255,dtype=np.uint8)
+    label_array = np.array(labels,dtype=np.uint8)
+
+    print(" Np-array image shape :  [", image_array.shape, " ] type :", image_array.dtype)
+    print(" Np-array label shape :  [", label_array.shape, " ] type :", label_array.dtype)
+
+    overlay = visualize_segmentation( image_array ,label_array,alpha=0.3)
+    cv2.imshow("show",overlay)
+    cv2.waitKey()

@@ -1,0 +1,4 @@
+[-------------------2024-09-27-16-54--------------------]
+ map:[--] scale:[1.3055 mode:[cubic]] 
+ src_path :[/home/ubuntu4090/4T_disk/liangshubo/MSK_Plus/dataset/rawdata/n20_sl14_3h_msk_process/dataset_process_926/plan2/GAN_SCI_02->SAM_MSK_LV2] 
+dst_path :[/home/ubuntu4090/4T_disk/liangshubo/MSK_Plus/dataset/rawdata/n20_sl14_3h_msk_process/dataset_process_926/plan2/GAN_SCI_02->SAM_MSK_LV2->Down13055]
