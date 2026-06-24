@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 
-from sympy.codegen import Print
+
 
 
 def parse_lidc_filename(file_path: str | Path) -> Tuple[int, str, int, str]:
